@@ -2,7 +2,7 @@
 const axios = require('axios');
 
 // !!! THAY ĐỔI URL API THỰC TẾ CỦA BẠN !!!
-const BACKEND_BASE_URL = 'http://localhost:8080'; // hoặc 'https://your-api.com'
+const BACKEND_BASE_URL = ' https://randa-unhappi-castiel.ngrok-free.dev'; // hoặc 'https://your-api.com'
 
 // Cache locations để tránh gọi API nhiều lần
 let LOCATION_MAP = {};
