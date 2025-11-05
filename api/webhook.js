@@ -248,7 +248,7 @@ module.exports = async function handler(req, res) {
                 const requestBody = {
                     startLocation: startLocationId,
                     endLocation: endLocationId,
-                    status: 'ON_SELL'
+                    status: 'on_sell'
                 };
 
                 if (departureDate) {
