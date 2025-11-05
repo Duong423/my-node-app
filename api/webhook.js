@@ -23,82 +23,90 @@ async function loadLocationsFromAPI() {
             }
         });
         
-        // API trả về: { code: 200, message: "...", result: [...] }
         const data = response.data;
         const locations = data.result || data.data || data;
         
         if (!Array.isArray(locations)) {
-            console.error('Invalid locations response format');
+            console.error('❌ Locations not array');
             return false;
         }
 
         console.log(`✅ Loaded ${locations.length} locations`);
         
-        // ⚠️ QUAN TRỌNG: Clear old map TRƯỚC
+        // Clear map
         LOCATION_MAP = {};
         
-        // Build mapping
-        locations.forEach(location => {
-            const id = location.id || location.locationId;
-            const name = location.name;
-            const city = location.city;
-            const address = location.address;
+        // Build mapping với ĐÚNG field names
+        locations.forEach((location) => {
+            // ✅ ĐÚNG: Dùng locationId và locationName
+            const id = location.locationId;
+            const name = location.locationName;
             
-            // Debug: Log từng location
-            console.log(`Processing: ${name} (${city}) → ID ${id}`);
+            if (!id || !name) {
+                return;
+            }
             
             // Map tên chính
-            if (name) {
-                LOCATION_MAP[name] = id;
-                LOCATION_MAP[name.toLowerCase()] = id;
+            LOCATION_MAP[name] = id;
+            LOCATION_MAP[name.toLowerCase()] = id;
+            
+            // Tách tên để map linh hoạt hơn
+            // VD: "Bến xe Miền Đông - Cổng 3" → Map cả "Bến xe Miền Đông"
+            const baseName = name.split('-')[0].trim();
+            if (baseName !== name) {
+                LOCATION_MAP[baseName] = id;
+                LOCATION_MAP[baseName.toLowerCase()] = id;
             }
             
-            if (city) {
-                LOCATION_MAP[city] = id;
-                LOCATION_MAP[city.toLowerCase()] = id;
-                
-                // Loại bỏ "Thành phố", "Tỉnh"
-                const cleanCity = city
-                    .replace(/^(Thành phố|Tỉnh)\s+/i, '')
-                    .trim();
-                LOCATION_MAP[cleanCity] = id;
-                LOCATION_MAP[cleanCity.toLowerCase()] = id;
-                
-                // Thêm viết tắt phổ biến
-                if (cleanCity.includes('Hồ Chí Minh')) {
-                    LOCATION_MAP['TP.HCM'] = id;
-                    LOCATION_MAP['TPHCM'] = id;
-                    LOCATION_MAP['Sài Gòn'] = id;
-                    LOCATION_MAP['Saigon'] = id;
-                }
-                if (cleanCity.includes('Hà Nội')) {
-                    LOCATION_MAP['HN'] = id;
-                    LOCATION_MAP['Ha Noi'] = id;
-                    LOCATION_MAP['Hanoi'] = id;
-                }
-                if (cleanCity.includes('Đà Nẵng')) {
-                    LOCATION_MAP['DN'] = id;
-                    LOCATION_MAP['Da Nang'] = id;
-                    LOCATION_MAP['Danang'] = id;
-                }
-                if (cleanCity.includes('Quảng Ngãi')) {
-                    LOCATION_MAP['Quang Ngai'] = id;
-                    LOCATION_MAP['Trung tâm Quảng Ngãi'] = id;
-                }
+            // Mapping thủ công cho các tên phổ biến
+            const lowerName = name.toLowerCase();
+            
+            if (lowerName.includes('miền đông') || lowerName.includes('mien dong')) {
+                LOCATION_MAP['TP.HCM'] = id;
+                LOCATION_MAP['TPHCM'] = id;
+                LOCATION_MAP['Hồ Chí Minh'] = id;
+                LOCATION_MAP['Sài Gòn'] = id;
+                LOCATION_MAP['Saigon'] = id;
             }
             
-            if (address) {
-                LOCATION_MAP[address] = id;
+            if (lowerName.includes('giáp bát') || lowerName.includes('giap bat')) {
+                LOCATION_MAP['Hà Nội'] = id;
+                LOCATION_MAP['Ha Noi'] = id;
+                LOCATION_MAP['Hanoi'] = id;
+                LOCATION_MAP['HN'] = id;
+            }
+            
+            if (lowerName.includes('đà nẵng') || lowerName.includes('da nang')) {
+                LOCATION_MAP['Đà Nẵng'] = id;
+                LOCATION_MAP['Da Nang'] = id;
+                LOCATION_MAP['Danang'] = id;
+                LOCATION_MAP['DN'] = id;
+            }
+            
+            if (lowerName.includes('nha trang')) {
+                LOCATION_MAP['Nha Trang'] = id;
+                LOCATION_MAP['Khánh Hòa'] = id;
+            }
+            
+            if (lowerName.includes('đà lạt') || lowerName.includes('da lat')) {
+                LOCATION_MAP['Đà Lạt'] = id;
+                LOCATION_MAP['Da Lat'] = id;
+                LOCATION_MAP['Dalat'] = id;
+                LOCATION_MAP['Lâm Đồng'] = id;
+            }
+            
+            if (lowerName.includes('quảng ngãi') || lowerName.includes('quang ngai')) {
+                LOCATION_MAP['Quảng Ngãi'] = id;
+                LOCATION_MAP['Quang Ngai'] = id;
             }
         });
         
-        LOCATION_CACHE_TIME = Date.now();
-        
-        // ✅ Log SAU KHI build xong
         console.log(`✅ LOCATION_MAP built with ${Object.keys(LOCATION_MAP).length} keys`);
         console.log('📍 Sample keys:', Object.keys(LOCATION_MAP).slice(0, 20));
         
+        LOCATION_CACHE_TIME = Date.now();
         return true;
+        
     } catch (error) {
         console.error('❌ Error loading locations:', error.message);
         return false;
