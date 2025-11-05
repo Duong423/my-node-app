@@ -17,39 +17,52 @@ async function loadLocationsFromAPI() {
         console.log('🔄 Loading locations from API...');
         
         const response = await axios.get(`${BACKEND_BASE_URL}/api/locations`, {
-            timeout: 5000
+            timeout: 5000,
+            headers: {
+                'ngrok-skip-browser-warning': 'true'
+            }
         });
         
         // API trả về: { code: 200, message: "...", result: [...] }
-        const locations = response.data.result || response.data.data || response.data;
+        const data = response.data;
+        const locations = data.result || data.data || data;
         
         if (!Array.isArray(locations)) {
             console.error('Invalid locations response format');
             return false;
         }
 
-        // Clear old map
+        console.log(`✅ Loaded ${locations.length} locations`);
+        
+        // ⚠️ QUAN TRỌNG: Clear old map TRƯỚC
         LOCATION_MAP = {};
         
-        // Build mapping tự động
+        // Build mapping
         locations.forEach(location => {
             const id = location.id || location.locationId;
             const name = location.name;
             const city = location.city;
             const address = location.address;
             
-            // Map tên chính
-            if (name) LOCATION_MAP[name] = id;
-            if (city) LOCATION_MAP[city] = id;
-            if (address) LOCATION_MAP[address] = id;
+            // Debug: Log từng location
+            console.log(`Processing: ${name} (${city}) → ID ${id}`);
             
-            // Map các biến thể phổ biến
+            // Map tên chính
+            if (name) {
+                LOCATION_MAP[name] = id;
+                LOCATION_MAP[name.toLowerCase()] = id;
+            }
+            
             if (city) {
+                LOCATION_MAP[city] = id;
+                LOCATION_MAP[city.toLowerCase()] = id;
+                
                 // Loại bỏ "Thành phố", "Tỉnh"
                 const cleanCity = city
                     .replace(/^(Thành phố|Tỉnh)\s+/i, '')
                     .trim();
                 LOCATION_MAP[cleanCity] = id;
+                LOCATION_MAP[cleanCity.toLowerCase()] = id;
                 
                 // Thêm viết tắt phổ biến
                 if (cleanCity.includes('Hồ Chí Minh')) {
@@ -68,12 +81,22 @@ async function loadLocationsFromAPI() {
                     LOCATION_MAP['Da Nang'] = id;
                     LOCATION_MAP['Danang'] = id;
                 }
+                if (cleanCity.includes('Quảng Ngãi')) {
+                    LOCATION_MAP['Quang Ngai'] = id;
+                    LOCATION_MAP['Trung tâm Quảng Ngãi'] = id;
+                }
+            }
+            
+            if (address) {
+                LOCATION_MAP[address] = id;
             }
         });
         
         LOCATION_CACHE_TIME = Date.now();
-        console.log(`✅ Loaded ${locations.length} locations`);
-        console.log('📍 LOCATION_MAP:', Object.keys(LOCATION_MAP).slice(0, 10), '...');
+        
+        // ✅ Log SAU KHI build xong
+        console.log(`✅ LOCATION_MAP built with ${Object.keys(LOCATION_MAP).length} keys`);
+        console.log('📍 Sample keys:', Object.keys(LOCATION_MAP).slice(0, 20));
         
         return true;
     } catch (error) {
