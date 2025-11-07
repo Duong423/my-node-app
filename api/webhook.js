@@ -81,24 +81,35 @@ async function getLocationId(name) {
 }
 
 // === TOÀN BỘ HÀM formatDepartureDate ĐÃ FIX ===
+// === CHỈ DÁN HÀM NÀY VÀO THAY HÀM CŨ ===
 function formatDepartureDate(thoiGian) {
     if (!thoiGian) return null;
 
     let dateStr = null;
 
     if (Array.isArray(thoiGian)) {
-        const isos = thoiGian.filter(item => typeof item === 'string' && item.includes('T'));
-        dateStr = isos.length > 0 ? isos.pop() : null;
+        const candidates = thoiGian.filter(item => typeof item === 'string' && item.includes('T') && item.includes(':'));
+        dateStr = candidates.length > 0 ? candidates.pop() : null;
     } else if (typeof thoiGian === 'string') {
-        const clean = thoiGian.trim().replace(/\.000000$/, '').replace(' ', 'T');
-        dateStr = clean.includes('T') ? clean + '+07:00' : clean + 'T00:00:00+07:00';
+        const trimmed = thoiGian.trim().replace(/\.000000$/, '');
+        const parts = trimmed.split(' ');
+        if (parts.length === 2) {
+            const [date, time] = parts;
+            const timePart = time.includes(':') ? time.split(':').slice(0, 2).join(':') : time;
+            dateStr = `${date}T${timePart}:00+07:00`;
+        } else {
+            dateStr = trimmed.includes('T') ? trimmed + '+07:00' : trimmed + 'T00:00:00+07:00';
+        }
     }
 
     if (!dateStr) return null;
 
     try {
         const date = new Date(dateStr);
-        if (isNaN(date)) return null;
+        if (isNaN(date)) {
+            console.error('Invalid date string:', dateStr);
+            return null;
+        }
         const isoWithTZ = date.toISOString().replace('Z', '+07:00');
         console.log(`Formatted departure: ${isoWithTZ}`);
         return isoWithTZ;
