@@ -1,6 +1,6 @@
 // File: /api/webhook.js
 const axios = require('axios');
-const axiosRetry = require('axios-retry'); // Cài thêm: npm i axios-retry
+const axiosRetry = require('axios-retry').default; // Cài thêm: npm i axios-retry
 
 // !!! THAY ĐỔI URL API THỰC TẾ CỦA BẠN !!!
 const BACKEND_BASE_URL = 'https://randa-unhappi-castiel.ngrok-free.dev'; // Xóa khoảng trắng
