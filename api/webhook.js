@@ -80,7 +80,7 @@ async function getLocationId(name) {
     return null;
 }
 
-// === XỬ LÝ THỜI GIAN TỪ DIALOGFLOW (STRING DUY NHẤT) ===
+// === XỬ LÝ THỜI GIAN TỪ DIALOGFLOW ===
 function formatDepartureDate(thoiGian) {
     if (!thoiGian) return null;
 
@@ -88,10 +88,18 @@ function formatDepartureDate(thoiGian) {
 
     let dateStr = null;
 
-    if (typeof thoiGian === 'string') {
+    // Case 1: Object với date_time (Dialogflow mới nhất)
+    if (typeof thoiGian === 'object' && !Array.isArray(thoiGian)) {
+        if (thoiGian.date_time) {
+            dateStr = thoiGian.date_time;
+            console.log('🎯 Lấy từ object.date_time:', dateStr);
+        }
+    }
+    // Case 2: String trực tiếp
+    else if (typeof thoiGian === 'string') {
         const trimmed = thoiGian.trim().replace(/\.000000$/, '');
         
-        // Case 1: Đã có format ISO với timezone (2025-11-24T07:00:00+07:00)
+        // Case 2a: Đã có format ISO với timezone (2025-11-24T07:00:00+07:00)
         if (trimmed.includes('T') && trimmed.includes(':')) {
             dateStr = trimmed;
             // Thêm timezone nếu chưa có
@@ -99,26 +107,42 @@ function formatDepartureDate(thoiGian) {
                 dateStr = dateStr + '+07:00';
             }
         }
-        // Case 2: Format "YYYY-MM-DD HH:mm:ss" (2025-11-24 07:00:00)
+        // Case 2b: Format "YYYY-MM-DD HH:mm:ss" (2025-11-24 07:00:00)
         else if (trimmed.includes(' ') && trimmed.includes(':')) {
             const [date, time] = trimmed.split(' ');
             const timePart = time.split(':').slice(0, 3).join(':');
             dateStr = `${date}T${timePart}+07:00`;
         }
-        // Case 3: Chỉ có ngày "YYYY-MM-DD" (2025-11-24)
+        // Case 2c: Chỉ có ngày "YYYY-MM-DD" (2025-11-24)
         else {
             dateStr = trimmed + 'T00:00:00+07:00';
         }
     }
-    // Fallback: nếu vẫn là array (backward compatibility)
+    // Case 3: Array (backward compatibility)
     else if (Array.isArray(thoiGian)) {
         console.log('⚠️ Nhận array thay vì string:', thoiGian);
         const candidates = thoiGian.filter(item => 
             typeof item === 'string' && item.includes('T') && item.includes(':')
         );
+        
         if (candidates.length > 0) {
-            const withTime = candidates.find(item => !item.split('T')[1]?.startsWith('00:00:00'));
-            dateStr = withTime || candidates[candidates.length - 1];
+            // Ưu tiên lấy thời gian trong khoảng 5h-22h (giờ hành chính/xe chạy)
+            // Tránh lấy 00:00 (nửa đêm) và 23:00 (gần nửa đêm)
+            const withRealisticTime = candidates.filter(item => {
+                const timePart = item.split('T')[1];
+                if (!timePart) return false;
+                const hour = parseInt(timePart.split(':')[0]);
+                // Lấy giờ từ 5h sáng đến 22h tối (thời gian xe khách thường chạy)
+                return hour >= 5 && hour <= 22;
+            });
+            
+            // Nếu có giờ hợp lý, lấy cái cuối cùng (thường là giờ người dùng chỉ định)
+            // Nếu không, fallback lấy cái cuối trong candidates
+            dateStr = withRealisticTime.length > 0 
+                ? withRealisticTime[withRealisticTime.length - 1] 
+                : candidates[candidates.length - 1];
+                
+            console.log(`🎯 Đã chọn: ${dateStr} từ ${candidates.length} candidates`);
         }
     }
 
