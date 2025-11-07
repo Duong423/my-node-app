@@ -1,18 +1,21 @@
 const axios = require('axios');
 const axiosRetry = require('axios-retry').default;
 
-// !!! THAY ĐỔI URL API THỰC TẾ CỦA BẠN !!!
 const BACKEND_BASE_URL = 'https://randa-unhappi-castiel.ngrok-free.dev';
 
-// Cache locations
+// Cache
 let LOCATION_MAP = {};
 let LOCATION_CACHE_TIME = null;
 const CACHE_DURATION = 3600000; // 1 giờ
 
-// Fallback static map
+// Fallback map (ID thực tế từ log trước)
 const FALLBACK_MAP = {
     'điện biên': 22,
     'dien bien': 22,
+    'đà nẵng': 5,
+    'da nang': 5,
+    'hà nội': 1,
+    'ha noi': 1,
     'an giang': 8,
     'đà lạt': 9,
     'da lat': 9,
@@ -20,249 +23,225 @@ const FALLBACK_MAP = {
     'hue': 10,
 };
 
-// Config retry cho axios
-axiosRetry(axios, { retries: 3, retryDelay: (retryCount) => retryCount * 2000 });
+axiosRetry(axios, { retries: 2, retryDelay: () => 1000 });
 
 /**
- * Load danh sách locations từ API
+ * Load locations với retry + fallback
  */
 async function loadLocationsFromAPI() {
     try {
         console.log('Loading locations from API...');
         const response = await axios.get(`${BACKEND_BASE_URL}/api/locations`, {
-            timeout: 15000,
+            timeout: 10000, // Giảm timeout để fail nhanh
             headers: { 'ngrok-skip-browser-warning': 'true' }
         });
 
         let locations = response.data.result || response.data.data || response.data;
-        if (!Array.isArray(locations)) {
-            console.error('Locations not array');
-            return false;
+        if (!Array.isArray(locations) || locations.length === 0) {
+            throw new Error('Invalid locations data');
         }
 
         console.log(`Loaded ${locations.length} locations`);
         LOCATION_MAP = {};
 
-        locations.forEach((location) => {
-            const id = location.locationId;
-            const name = location.locationName;
+        locations.forEach(loc => {
+            const id = loc.locationId;
+            const name = loc.locationName;
             if (!id || !name) return;
 
-            const lowerName = name.toLowerCase();
-            LOCATION_MAP[lowerName] = id;
+            const lower = name.toLowerCase();
+            LOCATION_MAP[lower] = id;
 
-            // Thêm alias
-            const baseName = name.split('-')[0].trim().toLowerCase();
-            if (baseName !== lowerName) LOCATION_MAP[baseName] = id;
+            const base = name.split('-')[0].trim().toLowerCase();
+            if (base !== lower) LOCATION_MAP[base] = id;
 
-            // Mapping phổ biến
-            if (lowerName.includes('miền đông')) {
-                ['tp.hcm', 'tphcm', 'hồ chí minh', 'sài gòn', 'saigon'].forEach(k => LOCATION_MAP[k] = id);
-            }
-            if (lowerName.includes('giáp bát')) {
-                ['hà nội', 'ha noi', 'hanoi', 'hn'].forEach(k => LOCATION_MAP[k] = id);
-            }
-            if (lowerName.includes('điện biên') || lowerName.includes('dien bien')) {
-                LOCATION_MAP['điện biên'] = id;
-                LOCATION_MAP['dien bien'] = id;
-            }
-            if (lowerName.includes('an giang')) LOCATION_MAP['an giang'] = id;
-            if (lowerName.includes('đà lạt') || lowerName.includes('da lat')) {
-                LOCATION_MAP['đà lạt'] = id;
-                LOCATION_MAP['da lat'] = id;
-            }
-            if (lowerName.includes('huế') || lowerName.includes('hue')) {
-                LOCATION_MAP['huế'] = id;
-                LOCATION_MAP['hue'] = id;
-            }
+            // Alias phổ biến
+            if (lower.includes('miền đông')) ['tp.hcm', 'tphcm', 'hồ chí minh', 'sài gòn', 'saigon'].forEach(k => LOCATION_MAP[k] = id);
+            if (lower.includes('giáp bát')) ['hà nội', 'ha noi', 'hanoi', 'hn'].forEach(k => LOCATION_MAP[k] = id);
+            if (lower.includes('điện biên')) LOCATION_MAP['điện biên'] = id;
+            if (lower.includes('an giang')) LOCATION_MAP['an giang'] = id;
+            if (lower.includes('đà lạt')) LOCATION_MAP['đà lạt'] = id;
+            if (lower.includes('huế')) LOCATION_MAP['huế'] = id;
         });
 
         console.log(`LOCATION_MAP built with ${Object.keys(LOCATION_MAP).length} keys`);
         LOCATION_CACHE_TIME = Date.now();
         return true;
     } catch (error) {
-        console.error('Error loading locations:', error.message);
+        console.error('API load locations failed:', error.message);
+        console.log('Using FALLBACK_MAP');
+        LOCATION_MAP = { ...FALLBACK_MAP };
+        LOCATION_CACHE_TIME = Date.now();
         return false;
     }
 }
 
 /**
- * Lấy Location ID
+ * Lấy ID location (luôn có fallback)
  */
-async function getLocationId(locationName) {
-    if (!locationName) return null;
-    if (Array.isArray(locationName)) locationName = locationName[0] || '';
+async function getLocationId(name) {
+    if (!name) return null;
+    if (Array.isArray(name)) name = name[0] || '';
 
-    const needReload = !LOCATION_CACHE_TIME || (Date.now() - LOCATION_CACHE_TIME > CACHE_DURATION);
-    if (needReload || Object.keys(LOCATION_MAP).length === 0) {
-        const success = await loadLocationsFromAPI();
-        if (!success) {
-            console.log('Using fallback map');
-            LOCATION_MAP = { ...FALLBACK_MAP };
-        }
+    const normalized = name.trim().toLowerCase();
+
+    if (Object.keys(LOCATION_MAP).length === 0 || !LOCATION_CACHE_TIME || (Date.now() - LOCATION_CACHE_TIME > CACHE_DURATION)) {
+        await loadLocationsFromAPI();
     }
 
-    const normalized = locationName.trim().toLowerCase();
     if (LOCATION_MAP[normalized]) return LOCATION_MAP[normalized];
 
-    for (const [key, value] of Object.entries(LOCATION_MAP)) {
-        if (key.includes(normalized) || normalized.includes(key)) return value;
+    for (const [key, id] of Object.entries(LOCATION_MAP)) {
+        if (key.includes(normalized) || normalized.includes(key)) return id;
     }
 
-    console.log(`Không tìm thấy ID cho "${locationName}"`);
+    console.log(`Không tìm thấy ID cho "${name}"`);
     return null;
 }
 
 /**
- * Format thời gian từ Dialogflow sang ISO local VN (KHÔNG chuyển UTC)
+ * Format thoiGian từ Dialogflow (array phức tạp)
  */
 function formatDepartureDate(thoiGian) {
     if (!thoiGian) return null;
-    try {
-        let dateStr;
-        if (Array.isArray(thoiGian)) {
-            dateStr = thoiGian.find(item => typeof item === 'string' && item.includes('T')) || thoiGian[thoiGian.length - 1];
-            if (typeof dateStr === 'object') dateStr = dateStr.startDate || dateStr.endDate;
-        } else if (typeof thoiGian === 'string') {
-            // Fix: Parse thành local date, KHÔNG + timezone, giữ nguyên ngày/giờ
-            dateStr = thoiGian.replace(' ', 'T').split('.')[0]; // "2025-11-24T07:00:00" (local)
-        } else {
-            dateStr = thoiGian;
-        }
 
-        const date = new Date(dateStr + '+07:00'); // Parse với VN timezone để giữ ngày đúng
+    let dateStr = null;
+
+    if (Array.isArray(thoiGian)) {
+        // Bỏ object range năm, lấy string ISO gần nhất
+        const isoStrings = thoiGian.filter(item => typeof item === 'string' && item.includes('T'));
+        if (isoStrings.length > 0) {
+            // Ưu tiên ngày xa nhất (người dùng nói "2025-11-24" → lấy cái gần nhất)
+            dateStr = isoStrings[isoStrings.length - 1]; // Lấy cuối cùng
+        }
+    } else if (typeof thoiGian === 'string') {
+        dateStr = thoiGian.replace(' ', 'T').split('.')[0];
+    }
+
+    if (!dateStr) {
+        console.log('Không parse được thoiGian:', thoiGian);
+        return null;
+    }
+
+    try {
+        // Parse với +07:00 để giữ ngày đúng
+        const date = new Date(dateStr.endsWith('Z') ? dateStr : `${dateStr}+07:00`);
         if (isNaN(date)) throw new Error('Invalid date');
-        
-        // Trả về ISO với timezone VN (backend sẽ hiểu đúng ngày 24/11)
-        const isoWithTZ = date.toISOString().replace('Z', '+07:00');
-        console.log(`Formatted departure (local VN): ${isoWithTZ}`);
-        return isoWithTZ;
+        const iso = date.toISOString();
+        console.log(`Formatted departure: ${iso}`);
+        return iso;
     } catch (error) {
-        console.error("Lỗi format ngày:", error);
+        console.error('Lỗi parse ngày:', error.message);
         return null;
     }
 }
 
-/**
- * Format thời gian hiển thị (luôn theo VN timezone)
- */
-function formatTime(isoString) {
+function formatPrice(p) {
+    return new Intl.NumberFormat('vi-VN').format(p) + ' VNĐ';
+}
+
+function formatTime(iso) {
     try {
-        const date = new Date(isoString);
-        // Fix: Buộc timezone VN (+07:00) để hiển thị đúng ngày/giờ
-        const vnDate = new Date(date.toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"}));
-        return vnDate.toLocaleString('vi-VN', {
+        const d = new Date(iso);
+        return d.toLocaleString('vi-VN', {
+            timeZone: 'Asia/Ho_Chi_Minh',
             hour: '2-digit',
             minute: '2-digit',
             day: '2-digit',
-            month: '2-digit',
-            timeZone: 'Asia/Ho_Chi_Minh' // Buộc VN timezone
+            month: '2-digit'
         });
-    } catch (error) {
-        console.error("Lỗi format time:", error);
-        return isoString;
-    }
-}
-function formatPrice(price) {
-    try {
-        return new Intl.NumberFormat('vi-VN').format(price);
     } catch {
-        return price + ' VNĐ';
+        return iso;
     }
 }
-
-
 
 /**
- * Main Handler – CHỈ DÙNG INTENT.DISPLAYNAME
+ * Handler – CHỈ DÙNG INTENT.DISPLAYNAME
  */
 module.exports = async function handler(req, res) {
-    if (req.method !== 'POST') {
-        res.setHeader('Allow', ['POST']);
-        return res.status(405).end('Method Not Allowed');
-    }
+    if (req.method !== 'POST') return res.status(405).end('Method Not Allowed');
 
     const body = req.body;
-    console.log('Incoming payload:', JSON.stringify(body, null, 2));
+    console.log('Payload:', JSON.stringify(body, null, 2));
 
     try {
-        // CHỈ DÙNG INTENT.DISPLAYNAME
         const intentName = body.queryResult?.intent?.displayName || '';
+        console.log("Intent:", intentName);
 
-        console.log("Intent Name:", intentName); // Debug
-
-        let responseText = "Xin lỗi, tôi chưa hiểu ý bạn.";
-
-        // CHỈ KIỂM TRA INTENT NAME
-        if (intentName === 'TimVeXe') {
-            console.log('Entered TimVeXe block'); // Debug
-
-            const params = body.queryResult.parameters;
-
-            let diemDi = params.diemDi?.original || params.diemDi || '';
-            if (Array.isArray(diemDi)) diemDi = diemDi[0] || '';
-
-            let diemDen = params.diemDen?.original || params.diemDen || '';
-            if (Array.isArray(diemDen)) diemDen = diemDen[0] || '';
-
-            let thoiGian = params.thoiGian?.original || params.thoiGian || '';
-
-            console.log("Điểm đi:", diemDi);
-            console.log("Điểm đến:", diemDen);
-            console.log("Thời gian:", thoiGian);
-
-            if (!diemDi || !diemDen) {
-                return res.status(200).json({ fulfillmentText: "Vui lòng cho tôi biết điểm đi và điểm đến." });
-            }
-
-            const startId = await getLocationId(diemDi);
-            const endId = await getLocationId(diemDen);
-
-            if (!startId || !endId) {
-                return res.status(200).json({
-                    fulfillmentText: `Xin lỗi, không tìm thấy địa điểm "${!startId ? diemDi : diemDen}".`
-                });
-            }
-
-            console.log(`Mapped IDs: ${startId} → ${endId}`);
-
-            const departureDate = formatDepartureDate(thoiGian);
-            const requestBody = { startLocation: startId, endLocation: endId, status: 'on_sell' };
-            if (departureDate) requestBody.departureDate = departureDate;
-
-            const apiResponse = await axios.post(`${BACKEND_BASE_URL}/api/trips/search`, requestBody, {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 15000
-            });
-
-            const trips = apiResponse.data.result || apiResponse.data.data || apiResponse.data || [];
-            console.log(`Found ${trips.length} trips`);
-
-            if (trips.length > 0) {
-                const topTrips = trips.slice(0, 5);
-                responseText = `Tìm thấy ${trips.length} chuyến từ ${diemDi} đến ${diemDen}${thoiGian ? ` vào ${formatTime(departureDate)}` : ''}:\n\n`;
-                topTrips.forEach((trip, i) => {
-                    const link = `${BACKEND_BASE_URL.replace('/api', '')}/booking?tripId=${trip.tripId}`;
-                    responseText += `${i + 1}. ${trip.operatorName || 'Nhà xe'}\n`;
-                    responseText += `   ${formatTime(trip.departureTime)} → ${formatTime(trip.arrivalEstimateTime)}\n`;
-                    responseText += `   ${formatPrice(trip.pricePerSeat)} VNĐ\n`;
-                    responseText += `   ${trip.availableSeats || 0} chỗ\n`;
-                    if (trip.averageRating > 0) responseText += `   ${trip.averageRating.toFixed(1)}/5\n`;
-                    responseText += `   Đặt vé: ${link}\n\n`;
-                });
-                if (trips.length > 5) responseText += `... và ${trips.length - 5} chuyến khác.`;
-            } else {
-                responseText = `Không tìm thấy chuyến nào từ ${diemDi} đến ${diemDen}${thoiGian ? ` vào ${formatTime(departureDate)}` : ''}.`;
-            }
+        if (intentName !== 'TimVeXe') {
+            return res.status(200).json({ fulfillmentText: "Xin lỗi, tôi chưa hiểu ý bạn." });
         }
 
-        res.status(200).json({ fulfillmentText: responseText });
+        console.log('Entered TimVeXe block');
+
+        const p = body.queryResult.parameters;
+
+        let diemDi = p.diemDi?.original || p.diemDi || '';
+        if (Array.isArray(diemDi)) diemDi = diemDi[0] || '';
+
+        let diemDen = p.diemDen?.original || p.diemDen || '';
+        if (Array.isArray(diemDen)) diemDen = diemDen[0] || '';
+
+        let thoiGian = p.thoiGian?.original || p.thoiGian;
+
+        console.log("Điểm đi:", diemDi);
+        console.log("Điểm đến:", diemDen);
+        console.log("Thời gian:", JSON.stringify(thoiGian));
+
+        if (!diemDi || !diemDen) {
+            return res.status(200).json({ fulfillmentText: "Vui lòng cho tôi biết điểm đi và điểm đến." });
+        }
+
+        const startId = await getLocationId(diemDi);
+        const endId = await getLocationId(diemDen);
+
+        if (!startId || !endId) {
+            return res.status(200).json({
+                fulfillmentText: `Không tìm thấy địa điểm "${!startId ? diemDi : diemDen}".`
+            });
+        }
+
+        console.log(`Mapped IDs: ${startId} → ${endId}`);
+
+        const departureDate = formatDepartureDate(thoiGian);
+        const payload = { startLocation: startId, endLocation: endId, status: 'on_sell' };
+        if (departureDate) payload.departureDate = departureDate;
+
+        console.log("Gửi API:", payload);
+
+        const apiRes = await axios.post(`${BACKEND_BASE_URL}/api/trips/search`, payload, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 10000
+        });
+
+        const trips = apiRes.data.result || apiRes.data.data || apiRes.data || [];
+        console.log(`Tìm thấy ${trips.length} chuyến`);
+
+        let text = '';
+        if (trips.length > 0) {
+            const top = trips.slice(0, 5);
+            text = `Tìm thấy ${trips.length} chuyến từ ${diemDi} đến ${diemDen}${thoiGian ? ` vào ${formatTime(departureDate)}` : ''}:\n\n`;
+            top.forEach((t, i) => {
+                const link = `${BACKEND_BASE_URL.replace('/api', '')}/booking?tripId=${t.tripId}`;
+                text += `${i + 1}. ${t.operatorName || 'Nhà xe'}\n`;
+                text += `   ${formatTime(t.departureTime)} → ${formatTime(t.arrivalEstimateTime)}\n`;
+                text += `   ${formatPrice(t.pricePerSeat)}\n`;
+                text += `   ${t.availableSeats || 0} chỗ trống\n`;
+                if (t.averageRating > 0) text += `   ${t.averageRating.toFixed(1)}/5\n`;
+                text += `   Đặt vé: ${link}\n\n`;
+            });
+            if (trips.length > 5) text += `... và ${trips.length - 5} chuyến khác.`;
+        } else {
+            text = `Không tìm thấy chuyến nào từ ${diemDi} đến ${diemDen}${thoiGian ? ` vào ${formatTime(departureDate)}` : ''}.`;
+        }
+
+        res.status(200).json({ fulfillmentText: text });
 
     } catch (error) {
-        console.error("Webhook error:", error.stack);
-        res.status(200).json({ fulfillmentText: "Đã có lỗi. Vui lòng thử lại." });
+        console.error("Webhook error:", error.message);
+        res.status(200).json({ fulfillmentText: "Đã có lỗi xảy ra. Vui lòng thử lại." });
     }
 }
 
-// Pre-load locations
-loadLocationsFromAPI().catch(console.error);
+// Pre-load
+loadLocationsFromAPI().catch(() => {});
