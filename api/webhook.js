@@ -14,9 +14,9 @@ const FALLBACK_MAP = {
     'điện biên': 22, // Từ log trước
     'dien bien': 22,
     'an giang': 8,
-    'đà lạt': 9, // Giả sử ID cho Đà Lạt, thay bằng thực tế
+    'đà lạt': 9, // Giả sử
     'da lat': 9,
-    'huế': 10, // Giả sử ID cho Huế, thay bằng thực tế
+    'huế': 10, // Giả sử
     'hue': 10,
     // Thêm khác nếu cần
 };
@@ -144,7 +144,7 @@ function formatDepartureDate(thoiGian) {
                 dateStr = dateStr.startDate || dateStr.endDate;
             }
         } else if (typeof thoiGian === 'string') {
-            dateStr = thoiGian.replace(' ', 'T').split('.')[0] + '+07:00'; // Handle format "2025-11-09 05:00:00.000000"
+            dateStr = thoiGian.replace(' ', 'T').split('.')[0] + '+07:00'; // Handle format "2025-11-24 07:00:00.000000"
         } else {
             dateStr = thoiGian;
         }
@@ -205,21 +205,18 @@ module.exports = async function handler(req, res) {
     console.log('📥 Incoming payload:', JSON.stringify(body, null, 2));
 
     try {
-        const intentName = body.queryResult.intent?.displayName || '';
-        const action = body.queryResult.action || ''; // Lấy action nếu có
+        // Fix lấy action: Handle nếu action là object {displayName: ...}
+        const action = body.queryResult.action?.displayName || body.queryResult.intent?.displayName || '';
 
-        console.log("Intent:", intentName);
         console.log("Action:", action);
         console.log("Parameters:", body.queryResult.parameters);
 
         let responseText = "Xin lỗi, tôi chưa hiểu ý bạn.";
 
-        // Match hoặc intentName hoặc action (handle case-sensitive)
-        if (intentName === 'TimVeXe' || action === 'timVeXe' || action === 'TimVeXe') {
-            console.log('Entered intent block'); // Thêm log để debug nếu vào if
+        if (action.toLowerCase() === 'timvexe') { // Match case-insensitive
+            console.log('Entered intent block'); // Debug log để kiểm tra
 
             const parameters = body.queryResult.parameters;
-            // Handle array hoặc object cho parameters
             let diemDi = parameters.diemDi?.original || parameters.diemDi || '';
             if (Array.isArray(diemDi)) diemDi = diemDi[0] || '';
             
