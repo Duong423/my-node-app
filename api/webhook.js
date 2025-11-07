@@ -94,9 +94,10 @@ function formatDepartureDate(thoiGian) {
         const trimmed = thoiGian.trim().replace(/\.000000$/, '');
         const parts = trimmed.split(' ');
         if (parts.length === 2) {
+            // Format: "2025-11-24 07:00:00" -> "2025-11-24T07:00:00+07:00"
             const [date, time] = parts;
-            const timePart = time.includes(':') ? time.split(':').slice(0, 2).join(':') : time;
-            dateStr = `${date}T${timePart}:00+07:00`;
+            const timePart = time.includes(':') ? time.split(':').slice(0, 3).join(':') : time + ':00:00';
+            dateStr = `${date}T${timePart}+07:00`;
         } else {
             dateStr = trimmed.includes('T') ? trimmed + '+07:00' : trimmed + 'T00:00:00+07:00';
         }
@@ -105,14 +106,15 @@ function formatDepartureDate(thoiGian) {
     if (!dateStr) return null;
 
     try {
+        // Chỉ validate, không convert timezone
         const date = new Date(dateStr);
         if (isNaN(date)) {
             console.error('Invalid date string:', dateStr);
             return null;
         }
-        const isoWithTZ = date.toISOString().replace('Z', '+07:00');
-        console.log(`Formatted departure: ${isoWithTZ}`);
-        return isoWithTZ;
+        // Trả về dateStr gốc để giữ nguyên giờ Việt Nam
+        console.log(`Formatted departure: ${dateStr}`);
+        return dateStr;
     } catch (error) {
         console.error('Parse ngày lỗi:', error.message);
         return null;
