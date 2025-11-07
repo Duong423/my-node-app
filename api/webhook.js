@@ -114,7 +114,7 @@ async function getLocationId(locationName) {
 }
 
 /**
- * Format thời gian
+ * Format thời gian từ Dialogflow sang ISO local VN (KHÔNG chuyển UTC)
  */
 function formatDepartureDate(thoiGian) {
     if (!thoiGian) return null;
@@ -124,20 +124,45 @@ function formatDepartureDate(thoiGian) {
             dateStr = thoiGian.find(item => typeof item === 'string' && item.includes('T')) || thoiGian[thoiGian.length - 1];
             if (typeof dateStr === 'object') dateStr = dateStr.startDate || dateStr.endDate;
         } else if (typeof thoiGian === 'string') {
-            dateStr = thoiGian.replace(' ', 'T').split('.')[0] + '+07:00';
+            // Fix: Parse thành local date, KHÔNG + timezone, giữ nguyên ngày/giờ
+            dateStr = thoiGian.replace(' ', 'T').split('.')[0]; // "2025-11-24T07:00:00" (local)
         } else {
             dateStr = thoiGian;
         }
 
-        const date = new Date(dateStr);
+        const date = new Date(dateStr + '+07:00'); // Parse với VN timezone để giữ ngày đúng
         if (isNaN(date)) throw new Error('Invalid date');
-        return date.toISOString();
+        
+        // Trả về ISO với timezone VN (backend sẽ hiểu đúng ngày 24/11)
+        const isoWithTZ = date.toISOString().replace('Z', '+07:00');
+        console.log(`Formatted departure (local VN): ${isoWithTZ}`);
+        return isoWithTZ;
     } catch (error) {
         console.error("Lỗi format ngày:", error);
         return null;
     }
 }
 
+/**
+ * Format thời gian hiển thị (luôn theo VN timezone)
+ */
+function formatTime(isoString) {
+    try {
+        const date = new Date(isoString);
+        // Fix: Buộc timezone VN (+07:00) để hiển thị đúng ngày/giờ
+        const vnDate = new Date(date.toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"}));
+        return vnDate.toLocaleString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+            timeZone: 'Asia/Ho_Chi_Minh' // Buộc VN timezone
+        });
+    } catch (error) {
+        console.error("Lỗi format time:", error);
+        return isoString;
+    }
+}
 function formatPrice(price) {
     try {
         return new Intl.NumberFormat('vi-VN').format(price);
@@ -146,14 +171,7 @@ function formatPrice(price) {
     }
 }
 
-function formatTime(isoString) {
-    try {
-        const date = new Date(isoString);
-        return date.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
-    } catch {
-        return isoString;
-    }
-}
+
 
 /**
  * Main Handler – CHỈ DÙNG INTENT.DISPLAYNAME
