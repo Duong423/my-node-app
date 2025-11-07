@@ -80,17 +80,18 @@ async function getLocationId(name) {
     return null;
 }
 
-// === FIX: GIỮ NGUYÊN NGÀY/GIỜ NGƯỜI DÙNG NÓI ===
+// === TOÀN BỘ HÀM formatDepartureDate ĐÃ FIX ===
 function formatDepartureDate(thoiGian) {
     if (!thoiGian) return null;
 
     let dateStr = null;
+
     if (Array.isArray(thoiGian)) {
         const isos = thoiGian.filter(item => typeof item === 'string' && item.includes('T'));
         dateStr = isos.length > 0 ? isos.pop() : null;
     } else if (typeof thoiGian === 'string') {
-        // "2025-11-24 07:00:00.000000" → "2025-11-24T07:00:00+07:00"
-        dateStr = thoiGian.replace(' ', 'T').split('.')[0] + '+07:00';
+        const clean = thoiGian.trim().replace(/\.000000$/, '').replace(' ', 'T');
+        dateStr = clean.includes('T') ? clean + '+07:00' : clean + 'T00:00:00+07:00';
     }
 
     if (!dateStr) return null;
@@ -98,8 +99,6 @@ function formatDepartureDate(thoiGian) {
     try {
         const date = new Date(dateStr);
         if (isNaN(date)) return null;
-
-        // Trả về ISO với timezone +07:00 → backend hiểu đúng ngày 24/11 07:00
         const isoWithTZ = date.toISOString().replace('Z', '+07:00');
         console.log(`Formatted departure: ${isoWithTZ}`);
         return isoWithTZ;
