@@ -1,47 +1,34 @@
 const axios = require('axios');
 const axiosRetry = require('axios-retry').default;
 
-// === CẤU HÌNH ===
 const BACKEND_BASE_URL = 'https://randa-unhappi-castiel.ngrok-free.dev';
 
-// Cache locations
 let LOCATION_MAP = {};
 let LOCATION_CACHE_TIME = null;
 const CACHE_DURATION = 3600000; // 1 giờ
 
-// Fallback khi API locations lỗi
 const FALLBACK_MAP = {
-    'điện biên': 22,
-    'dien bien': 22,
+    'điện biên': 22, 'dien bien': 22,
     'an giang': 8,
-    'đà lạt': 9,
-    'da lat': 9,
-    'huế': 10,
-    'hue': 10,
-    'hà nội': 1,
-    'ha noi': 1,
-    'tp.hcm': 2,
-    'sài gòn': 2,
-    'saigon': 2,
+    'đà lạt': 9, 'da lat': 9,
+    'huế': 10, 'hue': 10,
+    'hà nội': 1, 'ha noi': 1,
+    'tp.hcm': 2, 'sài gòn': 2, 'saigon': 2,
 };
 
-// Cấu hình retry cho axios
-axiosRetry(axios, {
-    retries: 2,
-    retryDelay: () => 1000,
-});
+axiosRetry(axios, { retries: 2, retryDelay: () => 1000 });
 
-// === LOAD LOCATIONS ===
+// === LOAD LOCATIONS (TĂNG TIMEOUT) ===
 async function loadLocationsFromAPI() {
     try {
         console.log('Loading locations from API...');
         const response = await axios.get(`${BACKEND_BASE_URL}/api/locations`, {
-            timeout: 8000,
+            timeout: 15000, // Tăng lên 15s
             headers: { 'ngrok-skip-browser-warning': 'true' }
         });
 
         let locations = response.data.result || response.data.data || response.data;
-        if (!Array.isArray(locations)) throw new Error('Locations not array');
+        if (!Array.isArray(locations)) throw new Error('Not array');
 
         LOCATION_MAP = {};
         locations.forEach(loc => {
@@ -52,7 +39,6 @@ async function loadLocationsFromAPI() {
             const lower = name.toLowerCase();
             LOCATION_MAP[lower] = id;
 
-            // Alias
             const base = name.split('-')[0].trim().toLowerCase();
             if (base !== lower) LOCATION_MAP[base] = id;
 
@@ -80,14 +66,12 @@ async function getLocationId(name) {
     if (Array.isArray(name)) name = name[0] || '';
     const normalized = name.trim().toLowerCase();
 
-    // Reload nếu cache hết hạn
     if (!LOCATION_CACHE_TIME || Date.now() - LOCATION_CACHE_TIME > CACHE_DURATION) {
         await loadLocationsFromAPI();
     }
 
     if (LOCATION_MAP[normalized]) return LOCATION_MAP[normalized];
 
-    // Tìm gần đúng
     for (const [key, id] of Object.entries(LOCATION_MAP)) {
         if (key.includes(normalized) || normalized.includes(key)) return id;
     }
@@ -96,32 +80,36 @@ async function getLocationId(name) {
     return null;
 }
 
-// === PARSE NGÀY TỪ DIALOGFLOW ===
+// === FIX: GIỮ NGUYÊN NGÀY/GIỜ NGƯỜI DÙNG NÓI ===
 function formatDepartureDate(thoiGian) {
     if (!thoiGian) return null;
 
     let dateStr = null;
     if (Array.isArray(thoiGian)) {
-        // Lọc các string ISO, bỏ object range
         const isos = thoiGian.filter(item => typeof item === 'string' && item.includes('T'));
-        dateStr = isos.length > 0 ? isos.pop() : null; // Lấy cuối cùng (ngày người dùng nói)
+        dateStr = isos.length > 0 ? isos.pop() : null;
     } else if (typeof thoiGian === 'string') {
-        dateStr = thoiGian.replace(' ', 'T').split('.')[0];
+        // "2025-11-24 07:00:00.000000" → "2025-11-24T07:00:00+07:00"
+        dateStr = thoiGian.replace(' ', 'T').split('.')[0] + '+07:00';
     }
 
     if (!dateStr) return null;
 
     try {
-        const date = new Date(dateStr.endsWith('Z') ? dateStr : `${dateStr}+07:00`);
+        const date = new Date(dateStr);
         if (isNaN(date)) return null;
-        return date.toISOString(); // Gửi UTC cho backend
+
+        // Trả về ISO với timezone +07:00 → backend hiểu đúng ngày 24/11 07:00
+        const isoWithTZ = date.toISOString().replace('Z', '+07:00');
+        console.log(`Formatted departure: ${isoWithTZ}`);
+        return isoWithTZ;
     } catch (error) {
         console.error('Parse ngày lỗi:', error.message);
         return null;
     }
 }
 
-// === HIỂN THỊ GIỜ VIỆT NAM (UTC → +07:00) ===
+// === HIỂN THỊ GIỜ VIỆT NAM ===
 function formatTime(isoString) {
     if (!isoString) return 'Invalid Date';
     try {
@@ -139,7 +127,6 @@ function formatTime(isoString) {
     }
 }
 
-// === FORMAT GIÁ & CHỖ ===
 function formatPrice(price) {
     const num = parseFloat(price);
     return isNaN(num) ? 'NaN VNĐ' : new Intl.NumberFormat('vi-VN').format(num) + ' VNĐ';
@@ -161,7 +148,6 @@ module.exports = async function handler(req, res) {
     console.log('Incoming payload:', JSON.stringify(body, null, 2));
 
     try {
-        // CHỈ DÙNG INTENT.DISPLAYNAME
         const intentName = body.queryResult?.intent?.displayName || '';
         if (intentName !== 'TimVeXe') {
             return res.status(200).json({ fulfillmentText: "Xin lỗi, tôi chưa hiểu ý bạn." });
@@ -171,7 +157,6 @@ module.exports = async function handler(req, res) {
 
         const params = body.queryResult.parameters;
 
-        // Xử lý array
         let diemDi = params.diemDi;
         if (Array.isArray(diemDi)) diemDi = diemDi[0] || '';
         else diemDi = diemDi || '';
@@ -184,7 +169,7 @@ module.exports = async function handler(req, res) {
 
         console.log("Điểm đi:", diemDi);
         console.log("Điểm đến:", diemDen);
-        console.log("Thời gian:", JSON.stringify(thoiGian));
+        console.log("Thời gian:", thoiGian);
 
         if (!diemDi || !diemDen) {
             return res.status(200).json({ fulfillmentText: "Vui lòng cho tôi biết điểm đi và điểm đến." });
@@ -213,14 +198,14 @@ module.exports = async function handler(req, res) {
 
         const apiResponse = await axios.post(`${BACKEND_BASE_URL}/api/trips/search`, requestBody, {
             headers: { 'Content-Type': 'application/json' },
-            timeout: 10000
+            timeout: 15000
         });
 
-        // === LẤY DỮ LIỆU TỪ .result (object) ===
         const result = apiResponse.data.result;
         if (!result || !result.trip_id) {
+            const timeDisplay = thoiGian ? ` vào ${formatTime(departureDate)}` : '';
             return res.status(200).json({
-                fulfillmentText: `Không tìm thấy chuyến nào từ ${diemDi} đến ${diemDen}${thoiGian ? ` vào ${formatTime(departureDate)}` : ''}.`
+                fulfillmentText: `Không tìm thấy chuyến nào từ ${diemDi} đến ${diemDen}${timeDisplay}.`
             });
         }
 
@@ -242,12 +227,10 @@ module.exports = async function handler(req, res) {
     } catch (error) {
         console.error("Webhook error:", error.message);
         let errorMsg = "Đã có lỗi xảy ra. Vui lòng thử lại.";
-        if (error.response) {
-            errorMsg = `Lỗi server: ${error.response.data?.message || error.message}`;
-        }
+        if (error.response?.data?.message) errorMsg = error.response.data.message;
         res.status(200).json({ fulfillmentText: errorMsg });
     }
 };
 
-// === PRE-LOAD LOCATIONS ===
-loadLocationsFromAPI().catch(() => console.log('Preload locations skipped'));
+// Pre-load
+loadLocationsFromAPI().catch(() => {});
