@@ -259,15 +259,29 @@ module.exports = async function handler(req, res) {
             timeout: 15000
         });
 
+        console.log("📦 Response từ API:", JSON.stringify(apiResponse.data, null, 2));
+
         const result = apiResponse.data.result;
-        if (!result || !result.trip_id) {
-            const timeDisplay = thoiGian ? ` vào ${formatTime(departureDate)}` : '';
+        
+        // Xử lý cả array và single object
+        let trips = [];
+        if (Array.isArray(result)) {
+            trips = result;
+        } else if (result && typeof result === 'object') {
+            trips = [result];
+        }
+        
+        console.log(`🚌 Tìm thấy ${trips.length} chuyến`);
+        
+        if (trips.length === 0) {
+            const timeDisplay = departureDate ? ` vào ${formatTime(departureDate)}` : '';
             return res.status(200).json({
                 fulfillmentText: `Không tìm thấy chuyến nào từ ${diemDi} đến ${diemDen}${timeDisplay}.`
             });
         }
 
-        const trip = result;
+        // Lấy chuyến đầu tiên
+        const trip = trips[0];
         const bookingLink = `${BACKEND_BASE_URL.replace('/api', '')}/booking?tripId=${trip.trip_id}`;
 
         let responseText = `Tìm thấy 1 chuyến từ ${diemDi} đến ${diemDen} vào ${formatTime(trip.departure_time)}:\n\n`;
