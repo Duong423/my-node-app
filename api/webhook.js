@@ -80,43 +80,65 @@ async function getLocationId(name) {
     return null;
 }
 
-// === TOÀN BỘ HÀM formatDepartureDate ĐÃ FIX ===
-// === CHỈ DÁN HÀM NÀY VÀO THAY HÀM CŨ ===
+// === XỬ LÝ THỜI GIAN TỪ DIALOGFLOW (STRING DUY NHẤT) ===
 function formatDepartureDate(thoiGian) {
     if (!thoiGian) return null;
 
+    console.log('📅 Input từ Dialogflow:', thoiGian);
+
     let dateStr = null;
 
-    if (Array.isArray(thoiGian)) {
-        const candidates = thoiGian.filter(item => typeof item === 'string' && item.includes('T') && item.includes(':'));
-        dateStr = candidates.length > 0 ? candidates.pop() : null;
-    } else if (typeof thoiGian === 'string') {
+    if (typeof thoiGian === 'string') {
         const trimmed = thoiGian.trim().replace(/\.000000$/, '');
-        const parts = trimmed.split(' ');
-        if (parts.length === 2) {
-            // Format: "2025-11-24 07:00:00" -> "2025-11-24T07:00:00+07:00"
-            const [date, time] = parts;
-            const timePart = time.includes(':') ? time.split(':').slice(0, 3).join(':') : time + ':00:00';
+        
+        // Case 1: Đã có format ISO với timezone (2025-11-24T07:00:00+07:00)
+        if (trimmed.includes('T') && trimmed.includes(':')) {
+            dateStr = trimmed;
+            // Thêm timezone nếu chưa có
+            if (!dateStr.includes('+') && !dateStr.includes('Z')) {
+                dateStr = dateStr + '+07:00';
+            }
+        }
+        // Case 2: Format "YYYY-MM-DD HH:mm:ss" (2025-11-24 07:00:00)
+        else if (trimmed.includes(' ') && trimmed.includes(':')) {
+            const [date, time] = trimmed.split(' ');
+            const timePart = time.split(':').slice(0, 3).join(':');
             dateStr = `${date}T${timePart}+07:00`;
-        } else {
-            dateStr = trimmed.includes('T') ? trimmed + '+07:00' : trimmed + 'T00:00:00+07:00';
+        }
+        // Case 3: Chỉ có ngày "YYYY-MM-DD" (2025-11-24)
+        else {
+            dateStr = trimmed + 'T00:00:00+07:00';
+        }
+    }
+    // Fallback: nếu vẫn là array (backward compatibility)
+    else if (Array.isArray(thoiGian)) {
+        console.log('⚠️ Nhận array thay vì string:', thoiGian);
+        const candidates = thoiGian.filter(item => 
+            typeof item === 'string' && item.includes('T') && item.includes(':')
+        );
+        if (candidates.length > 0) {
+            const withTime = candidates.find(item => !item.split('T')[1]?.startsWith('00:00:00'));
+            dateStr = withTime || candidates[candidates.length - 1];
         }
     }
 
-    if (!dateStr) return null;
+    if (!dateStr) {
+        console.error('❌ Không parse được thời gian');
+        return null;
+    }
 
     try {
-        // Chỉ validate, không convert timezone
+        // Validate datetime
         const date = new Date(dateStr);
-        if (isNaN(date)) {
-            console.error('Invalid date string:', dateStr);
+        if (isNaN(date.getTime())) {
+            console.error('❌ Invalid date:', dateStr);
             return null;
         }
-        // Trả về dateStr gốc để giữ nguyên giờ Việt Nam
-        console.log(`Formatted departure: ${dateStr}`);
+        
+        console.log(`✅ Thời gian đã format: ${dateStr}`);
         return dateStr;
     } catch (error) {
-        console.error('Parse ngày lỗi:', error.message);
+        console.error('❌ Parse error:', error.message);
         return null;
     }
 }

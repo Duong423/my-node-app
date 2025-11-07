@@ -6,8 +6,19 @@ function formatDepartureDate(thoiGian) {
     let dateStr = null;
 
     if (Array.isArray(thoiGian)) {
+        // Lọc các string có dạng ISO datetime
         const candidates = thoiGian.filter(item => typeof item === 'string' && item.includes('T') && item.includes(':'));
-        dateStr = candidates.length > 0 ? candidates.pop() : null;
+        
+        if (candidates.length > 0) {
+            // Ưu tiên lấy thời gian có giờ != 00:00:00 (thời gian cụ thể)
+            const withSpecificTime = candidates.find(item => {
+                const timePart = item.split('T')[1];
+                return timePart && !timePart.startsWith('00:00:00');
+            });
+            
+            // Nếu có thời gian cụ thể thì dùng, không thì lấy cái cuối
+            dateStr = withSpecificTime || candidates[candidates.length - 1];
+        }
     } else if (typeof thoiGian === 'string') {
         const trimmed = thoiGian.trim().replace(/\.000000$/, '');
         const parts = trimmed.split(' ');
@@ -17,7 +28,7 @@ function formatDepartureDate(thoiGian) {
             const timePart = time.includes(':') ? time.split(':').slice(0, 3).join(':') : time + ':00:00';
             dateStr = `${date}T${timePart}+07:00`;
         } else {
-            dateStr = trimmed.includes('T') ? trimmed + '+07:00' : trimmed + 'T00:00:00+07:00';
+            dateStr = trimmed.includes('T') ? trimmed : trimmed + 'T00:00:00+07:00';
         }
     }
 
@@ -30,6 +41,12 @@ function formatDepartureDate(thoiGian) {
             console.error('Invalid date string:', dateStr);
             return null;
         }
+        
+        // Đảm bảo có timezone +07:00 nếu chưa có
+        if (!dateStr.includes('+') && !dateStr.includes('Z')) {
+            dateStr = dateStr + '+07:00';
+        }
+        
         // Trả về dateStr gốc để giữ nguyên giờ Việt Nam
         console.log(`Formatted departure: ${dateStr}`);
         return dateStr;
@@ -67,3 +84,27 @@ console.log('Input: "2025-12-01 09:15:00"');
 console.log('Output:', test4);
 console.log('Expected: 2025-12-01T09:15:00+07:00');
 console.log('✅ PASS:', test4 === '2025-12-01T09:15:00+07:00' ? 'YES' : 'NO');
+
+console.log('\n🧪 Test 5: Array from Dialogflow - CRITICAL TEST');
+const dialogflowArray = [
+    {"startDate":"2025-01-01T00:00:00+07:00","endDate":"2025-12-31T23:59:59+07:00"},
+    "2025-11-07T23:00:00+07:00",
+    "2025-11-08T00:00:00+07:00",  // Midnight - NOT this one
+    "2025-11-08T07:00:00+07:00"   // 7 AM - SHOULD pick this!
+];
+const test5 = formatDepartureDate(dialogflowArray);
+console.log('Input: Dialogflow array with multiple times');
+console.log('Output:', test5);
+console.log('Expected: 2025-11-08T07:00:00+07:00 (should pick 07:00, not 00:00)');
+console.log('✅ PASS:', test5 === '2025-11-08T07:00:00+07:00' ? 'YES' : 'NO');
+
+console.log('\n🧪 Test 6: Array with only midnight times');
+const midnightArray = [
+    "2025-11-08T00:00:00+07:00",
+    "2025-11-09T00:00:00+07:00"
+];
+const test6 = formatDepartureDate(midnightArray);
+console.log('Input: Array with only 00:00 times');
+console.log('Output:', test6);
+console.log('Expected: 2025-11-09T00:00:00+07:00 (latest midnight)');
+console.log('✅ PASS:', test6 === '2025-11-09T00:00:00+07:00' ? 'YES' : 'NO');
